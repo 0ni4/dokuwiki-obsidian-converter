@@ -1,4 +1,4 @@
-# DokuWiki to Obsidian Converter - Enhanced
+# DokuWiki to Obsidian Converter
 
 > Note: このREADMEはAIによって生成され、チェックされてから投稿されています。
 
