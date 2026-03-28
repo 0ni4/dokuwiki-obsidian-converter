@@ -75,9 +75,8 @@ def convert_syntax(content, root):
     content = re.sub(r'\[\[(.+?)\]\]', lambda match: convert_link(match, root), content)
     content = re.sub(r'\{\{([^|}]+)(?:\|(?:[^}]+))?\}\}', convert_media_link, content)
 
-    # Coverting tables
-    content = re.sub(r'^[ \t]*?\^(.*)(\^|\|)$', replace_carrot, content, flags=re.MULTILINE)
-    content = re.sub(r'^[ \t]*?\|[ \t]*?\^(.*)(\^|\|)$', replace_carrot, content, flags=re.MULTILINE)
+    # Convert DokuWiki tables to Markdown tables
+    content = convert_tables(content)
 
     # Convert // used for italics
     content = re.sub(r'(?<!:)//(.*?)//', r'*\1*', content)
@@ -98,7 +97,7 @@ def convert_syntax(content, root):
     
     for code in code_tuple:
         code_content = re.sub(r'(<code(.*?)>((.|\n)*?)<\/code>)', r'\3',code[1],  flags=re.MULTILINE)
-        content = re.sub(code[0], '\n```\n'+code_content.strip()+'\n```', content)
+        content = content.replace(code[0], '\n```\n'+code_content.strip()+'\n```')
 
     content = re.sub(r'\n\s*\n+', '\n\n', content)
     
@@ -238,37 +237,50 @@ def convert_media_link(match):
     else:
         caption = False
 
-    sub_link = match.group(1).split('?')
+    # Remove leading/trailing colons
+    raw_link = match.group(1).strip()
+    if raw_link.startswith(':'):
+        raw_link = raw_link[1:]
+    if raw_link.endswith(':'):
+        raw_link = raw_link[:-1]
     
-    link =  ''
-
+    # Split by ? to remove size specifications
+    sub_link = raw_link.split('?')
+    
+    link = ''
     if len(sub_link) > 1:
-        for i in range(len(sub_link)-1):
-            link += sub_link[i]
+        link = sub_link[0]  # Take only the part before ?
     else:
         link = sub_link[0]
 
-    link = link.strip()
+    # Remove any trailing colons from the link
+    link = link.strip().rstrip(':')
 
     if not contains(image_ext, link):
         match_type = "media"
 
+    # Extract filename from path if it contains colons (for paths like wiki:folder:filename)
+    if ':' in link:
+        filename = link.split(':')[-1].strip()
+    else:
+        filename = link
+
     if match_type == "image":
         if "http://" in link or "https://" in link:
             if(caption):
-                return f'!['+caption+' | 300]({link})'
+                return f'!['+caption+']({link})'
             else:
-                return f'![Image | 300]({link})'
+                return f'![Image]({link})'
         else:
-            return f'![[{link.split(":")[-1].strip()} | 300]]'
+            return f'![[{filename}]]' if filename else ''
     else:
         if "http://" in link or "https://" in link:
             if(caption):
-                return f'!['+caption+' | 300]({link})'
+                return f'!['+caption+']({link})'
             else:
-                return f'![Image | 400]({link})'
+                return f'![Image]({link})'
         else:
-            return f'![[{link.split(":")[-1].strip()}]]'
+            return f'![[{filename}]]' if filename else ''
 
     return ""
 
@@ -279,16 +291,119 @@ def wrap_regex(match):
         return ""
 
 
-def replace_carrot(match):
-    
-    c_count = match.group(0).count("^")
-    result = match.group(0).replace("^","|").strip()
-    if c_count > 1:
-        result += "\n";
-        for _ in range(result.count('|')-1):
-            result+="|---"
-        result+="|"
-    return result
+def convert_tables(content):
+    """
+    Convert DokuWiki table format to Markdown table format
+    DokuWiki format:
+    ^ Header1 ^ Header2 ^ Header3 ^
+    | Data1 | Data2 | Data3 |
+    | Data4 | Data5 | Data6 |
+
+    Also handles tables without headers:
+    | Data1 | Data2 | Data3 |
+    | Data4 | Data5 | Data6 |
+    """
+    lines = content.split('\n')
+    result_lines = []
+    table_lines = []
+    in_table = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('^') or stripped.startswith('|'):
+            # This is a table row (header or data)
+            if not in_table:
+                in_table = True
+                table_lines = []
+            table_lines.append(line)
+        else:
+            # End of table or non-table line
+            if in_table:
+                # Process the collected table lines
+                if table_lines:
+                    result_lines.extend(process_table(table_lines))
+                in_table = False
+                table_lines = []
+            result_lines.append(line)
+
+    # Handle table at the end of content
+    if in_table and table_lines:
+        result_lines.extend(process_table(table_lines))
+
+    return '\n'.join(result_lines)
+
+def process_table(table_lines):
+    """
+    Process a list of DokuWiki table lines and convert to Markdown format
+    """
+    if not table_lines:
+        return []
+
+    markdown_lines = []
+    header_processed = False
+    has_header = any(line.strip().startswith('^') for line in table_lines)
+
+    for line in table_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if stripped.startswith('^'):
+            # Header row
+            cells = split_table_cells(stripped, '^')
+            markdown_line = '| ' + ' | '.join(cells) + ' |'
+            markdown_lines.append(markdown_line)
+
+            # Add separator line after header
+            if not header_processed:
+                separator = '| ' + ' | '.join(['---'] * len(cells)) + ' |'
+                markdown_lines.append(separator)
+                header_processed = True
+
+        elif stripped.startswith('|'):
+            # Data row
+            cells = split_table_cells(stripped, '|')
+            markdown_line = '| ' + ' | '.join(cells) + ' |'
+            markdown_lines.append(markdown_line)
+
+            # If no header was found and this is the first data row, treat it as header
+            if not has_header and not header_processed:
+                # Add separator line after first data row (treated as header)
+                separator = '| ' + ' | '.join(['---'] * len(cells)) + ' |'
+                markdown_lines.append(separator)
+                header_processed = True
+
+    return markdown_lines
+
+def split_table_cells(line, delimiter):
+    """
+    Split table cells by delimiter (^ or |) and clean up content
+    """
+    # Remove leading/trailing delimiters and split
+    line = line.strip()
+    if line.startswith(delimiter):
+        line = line[1:]
+    if line.endswith(delimiter):
+        line = line[:-1]
+
+    # Split by delimiter, but be careful with escaped delimiters
+    cells = []
+    current_cell = ""
+    i = 0
+
+    while i < len(line):
+        if line[i] == delimiter:
+            cells.append(current_cell.strip())
+            current_cell = ""
+        else:
+            current_cell += line[i]
+        i += 1
+
+    # Add the last cell
+    if current_cell.strip():
+        cells.append(current_cell.strip())
+
+    return cells
 
 # Function to check if a file with the same name exists and whether it should be overwritten
 def should_write(file_path, new_content, dokuwiki_path, overwrite_mode):
@@ -342,6 +457,8 @@ for root, _, files in os.walk(os.path.join(source_folder, 'pages')):
                 dokuwiki_content = dokuwiki_file.read()
 
             title = extract_first_heading(file, dokuwiki_content)
+            # Decode URL-encoded filename
+            title = urllib.parse.unquote(title)
 
             print("Converting "+ os.path.join(os.path.relpath(root, os.path.join(source_folder, 'pages')), file))
 
@@ -350,6 +467,8 @@ for root, _, files in os.walk(os.path.join(source_folder, 'pages')):
 
             # Build Obsidian file name
             rel_path_array = os.path.relpath(root, os.path.join(source_folder, 'pages')).split(os.path.sep)
+            # Decode URL-encoded folder names (e.g., %E6%8A%80... to Japanese characters)
+            rel_path_array = [urllib.parse.unquote(r) for r in rel_path_array]
             rel_path = os.path.join(*[r.capitalize() for r in rel_path_array])
             
             obsidian_folder= os.path.join(destination_folder, rel_path)
