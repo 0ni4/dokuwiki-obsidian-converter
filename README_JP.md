@@ -1,5 +1,7 @@
 # DokuWiki to Obsidian Converter - Enhanced
 
+> Note: このREADMEはAIによって生成され、チェックされてから投稿されています。
+
 このプロジェクトは、DokuWikiのデータを[Obsidian](https://obsidian.md/)形式に変換するPythonスクリプトです。
 
 **元のプロジェクト**: [ReactiveMatter/dokuwiki-obsidian](https://github.com/ReactiveMatter/dokuwiki-obsidian)
@@ -10,7 +12,6 @@
 
 ### 1. **日本語ファイル名・フォルダ名対応 🌏**
    - URL エンコードされたファイル/フォルダ名を正しくデコード
-   - 例: `%E6%8A%80%E8%A1%93%E7%9A%84%E3%83%A1%E3%83%A2` → `技術的メモ`
 
 ### 2. **テーブル変換の改善 📊**
    - DokuWiki テーブル形式（`^` と `|`）を Markdown テーブルに完全変換
@@ -117,17 +118,9 @@ output/
 
 - Python 3.6以上
 
-## 要件
-
-組み込みモジュールのみを使用しており、外部依存は不要です。
-
 ## ライセンス
 
 このプロジェクトは元のプロジェクトと同じライセンスに従います。
-
-## 贡獻
-
-改善提案やバグ報告は、Issueまたはプルリクエストでお知らせください。
 
 ## 関連リンク
 
